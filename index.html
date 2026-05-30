@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PMxAIBot — PK/PD Pharmacometric Assistant</title>
+  <meta name="description" content="AI-powered pharmacokinetic and pharmacodynamic assistant for researchers and clinical pharmacologists." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0b0f0e;
+      --bg2: #111815;
+      --bg3: #172018;
+      --surface: #1a2420;
+      --surface2: #1f2c28;
+      --border: rgba(29,158,117,0.15);
+      --border2: rgba(29,158,117,0.3);
+      --teal: #1D9E75;
+      --teal-dark: #0F6E56;
+      --teal-light: #5DCAA5;
+      --teal-dim: #085041;
+      --text: #e8f2ee;
+      --text2: #8fb5a6;
+      --text3: #4d7a6a;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(29,158,117,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(29,158,117,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Header */
+    header {
+      position: relative;
+      z-index: 10;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(11,15,14,0.95);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--teal-dark), var(--teal));
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .logo svg { width: 22px; height: 22px; }
+
+    .header-text { flex: 1; }
+    .header-title {
+      font-size: 16px; font-weight: 600;
+      letter-spacing: -0.4px; color: var(--text);
+    }
+    .header-title span { color: var(--teal-light); }
+    .header-sub {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .status-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 10px;
+      color: var(--teal); padding: 5px 10px;
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      background: rgba(29,158,117,0.06);
+    }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--teal);
+      box-shadow: 0 0 6px var(--teal);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .api-warning {
+      display: none;
+      position: relative; z-index: 10;
+      background: rgba(186,117,23,0.12);
+      border-bottom: 1px solid rgba(186,117,23,0.3);
+      padding: 10px 24px;
+      font-family: var(--mono); font-size: 11px;
+      color: #EF9F27;
+      align-items: center; gap: 10px;
+    }
+    .api-warning.show { display: flex; }
+    .api-warning input {
+      flex: 1; background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(186,117,23,0.4);
+      border-radius: 6px; padding: 5px 10px;
+      font-family: var(--mono); font-size: 11px;
+      color: #EF9F27; outline: none; max-width: 340px;
+    }
+    .api-warning button {
+      background: rgba(186,117,23,0.2);
+      border: 1px solid rgba(186,117,23,0.4);
+      border-radius: 6px; padding: 5px 12px;
+      font-family: var(--mono); font-size: 11px;
+      color: #EF9F27; cursor: pointer;
+    }
+    .api-warning button:hover { background: rgba(186,117,23,0.35); }
+
+    /* Main layout */
+    main {
+      position: relative; z-index: 1;
+      flex: 1; display: flex; flex-direction: column;
+      max-width: 860px; width: 100%; margin: 0 auto;
+      padding: 0 16px; height: 0; min-height: 0;
+    }
+
+    /* Quick pills */
+    .pills {
+      display: flex; gap: 6px; padding: 12px 0 10px;
+      flex-wrap: wrap; flex-shrink: 0;
+    }
+    .pill {
+      font-family: var(--mono); font-size: 10px;
+      padding: 5px 11px; border-radius: 20px;
+      border: 1px solid var(--border2);
+      color: var(--text2); cursor: pointer;
+      background: transparent;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .pill:hover { border-color: var(--teal); color: var(--teal-light); background: rgba(29,158,117,0.08); }
+
+    /* Messages */
+    .messages {
+      flex: 1; overflow-y: auto; padding: 4px 0 12px;
+      display: flex; flex-direction: column; gap: 16px;
+      scroll-behavior: smooth;
+    }
+    .messages::-webkit-scrollbar { width: 3px; }
+    .messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    .msg { display: flex; gap: 12px; animation: fadeUp 0.2s ease; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    .msg.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-size: 11px; font-weight: 600;
+      font-family: var(--mono);
+    }
+    .avatar.bot { background: linear-gradient(135deg, var(--teal-dark), var(--teal)); color: #fff; }
+    .avatar.user { background: var(--surface2); color: var(--teal-light); border: 1px solid var(--border2); }
+
+    .bubble-wrap { max-width: 80%; display: flex; flex-direction: column; }
+    .msg.user .bubble-wrap { align-items: flex-end; }
+
+    .bubble {
+      padding: 11px 15px; border-radius: 12px;
+      font-size: 13.5px; line-height: 1.7;
+    }
+    .bubble.bot {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top-left-radius: 3px;
+      color: var(--text);
+    }
+    .bubble.user {
+      background: linear-gradient(135deg, var(--teal-dark), var(--teal));
+      color: #fff;
+      border-top-right-radius: 3px;
+    }
+
+    .bubble code {
+      font-family: var(--mono); font-size: 11.5px;
+      background: rgba(29,158,117,0.12);
+      color: var(--teal-light);
+      padding: 1px 6px; border-radius: 3px;
+    }
+    .bubble.user code { background: rgba(255,255,255,0.2); color: #fff; }
+    .bubble pre {
+      font-family: var(--mono); font-size: 11px;
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 12px;
+      overflow-x: auto; margin: 8px 0; line-height: 1.6;
+      color: var(--teal-light);
+    }
+
+    .meta {
+      font-family: var(--mono); font-size: 9px;
+      color: var(--text3); margin-top: 5px; padding: 0 2px;
+    }
+
+    .tag {
+      display: inline-block; font-family: var(--mono); font-size: 10px;
+      padding: 2px 8px; border-radius: 4px;
+      background: rgba(29,158,117,0.12);
+      border: 1px solid var(--border2);
+      color: var(--teal-light); margin: 2px 2px 2px 0;
+    }
+
+    /* Typing */
+    .typing-wrap { display: flex; gap: 12px; }
+    .typing {
+      display: flex; gap: 5px; padding: 12px 15px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; border-top-left-radius: 3px;
+      align-items: center;
+    }
+    .typing span {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--teal); animation: bounce 1.2s infinite;
+    }
+    .typing span:nth-child(2){animation-delay:0.2s}
+    .typing span:nth-child(3){animation-delay:0.4s}
+    @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
+
+    /* Input */
+    .input-area {
+      padding: 12px 0 16px; flex-shrink: 0;
+      border-top: 1px solid var(--border);
+    }
+    .input-row { display: flex; gap: 8px; align-items: flex-end; }
+
+    textarea {
+      flex: 1; resize: none;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-family: var(--sans); font-size: 13.5px;
+      color: var(--text); outline: none;
+      min-height: 42px; max-height: 120px;
+      line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+    textarea::placeholder { color: var(--text3); }
+    textarea:focus { border-color: var(--teal); }
+
+    .send-btn {
+      width: 42px; height: 42px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--teal-dark), var(--teal));
+      border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: opacity 0.15s, transform 0.1s;
+    }
+    .send-btn:hover { opacity: 0.85; }
+    .send-btn:active { transform: scale(0.95); }
+    .send-btn svg { width: 17px; height: 17px; fill: white; }
+
+    footer {
+      position: relative; z-index: 10;
+      padding: 8px 24px;
+      border-top: 1px solid var(--border);
+      font-family: var(--mono); font-size: 9px;
+      color: var(--text3); text-align: center;
+      background: rgba(11,15,14,0.9);
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 600px) {
+      header { padding: 10px 14px; }
+      main { padding: 0 10px; }
+      .header-sub { display: none; }
+      .bubble { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="11" cy="11" rx="8" ry="5" stroke="white" stroke-width="1.2" fill="none"/>
+      <ellipse cx="11" cy="11" rx="8" ry="5" stroke="white" stroke-width="1.2" fill="none" transform="rotate(60 11 11)"/>
+      <ellipse cx="11" cy="11" rx="8" ry="5" stroke="white" stroke-width="1.2" fill="none" transform="rotate(120 11 11)"/>
+      <circle cx="11" cy="11" r="2" fill="white"/>
+    </svg>
+  </div>
+  <div class="header-text">
+    <div class="header-title">PMx<span>AI</span>Bot</div>
+    <div class="header-sub">pharmconsulting.net · Pharmacometric AI · PK/PD · PopPK · NCA · PBPK</div>
+  </div>
+  <div class="status-badge"><div class="status-dot"></div>online</div>
+</header>
+
+<div class="api-warning" id="apiWarning">
+  ⚠ Enter your Anthropic API key to activate:
+  <input type="password" id="apiKeyInput" placeholder="sk-ant-..." />
+  <button onclick="saveKey()">Save</button>
+</div>
+
+<main>
+  <div class="pills" id="quickPills">
+    <button class="pill" onclick="sendQuick('Explain a one-compartment IV bolus PK model with equations')">1-cmt PK model</button>
+    <button class="pill" onclick="sendQuick('What is volume of distribution and how is it calculated?')">Volume of distribution</button>
+    <button class="pill" onclick="sendQuick('Explain the Emax and sigmoid Emax pharmacodynamic models')">Emax PD model</button>
+    <button class="pill" onclick="sendQuick('What are the key NCA parameters and how are they derived?')">NCA parameters</button>
+    <button class="pill" onclick="sendQuick('Explain inter-individual variability (IIV) in population PK modeling')">IIV / PopPK</button>
+    <button class="pill" onclick="sendQuick('How does renal impairment affect drug clearance and dosing?')">Renal impairment</button>
+    <button class="pill" onclick="sendQuick('What is PBPK modeling and when is it used?')">PBPK</button>
+    <button class="pill" onclick="sendQuick('Explain allometric scaling for dose extrapolation')">Allometric scaling</button>
+  </div>
+
+  <div class="messages" id="msgContainer" role="log" aria-live="polite" aria-label="Chat messages"></div>
+
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="userInput" placeholder="Ask about PK/PD, compartmental models, NONMEM, covariate analysis, dose optimization…" rows="1"
+        onkeydown="handleKey(event)" oninput="autoResize(this)" aria-label="Message input"></textarea>
+      <button class="send-btn" onclick="sendMessage()" aria-label="Send message">
+        <svg viewBox="0 0 16 16"><path d="M14.5 8L2 2l2.5 6L2 14l12.5-6z"/></svg>
+      </button>
+    </div>
+  </div>
+</main>
+
+<footer>
+  PMxAIBot · pharmconsulting.net · For research &amp; educational use only · Not intended for clinical decision-making
+</footer>
+
+<script>
+  const SYSTEM_PROMPT = `You are PMxAIBot, an expert AI assistant for pharmacokinetics (PK), pharmacodynamics (PD), population pharmacokinetics (PopPK), and pharmacometrics, developed for pharmconsulting.net.
+
+Your expertise covers:
+- Compartmental PK models: 1-cmt, 2-cmt, 3-cmt; IV bolus, IV infusion, oral absorption (first-order, zero-order, transit compartments, lag time)
+- Non-compartmental analysis (NCA): AUC (linear-log trapezoidal), Cmax, Tmax, t½, CL, Vd, Vss, MRT, AUMC, F (bioavailability)
+- PD models: Linear, Emax, sigmoid Emax (Hill equation), indirect response models (stimulation/inhibition of kin or kout), effect compartment (Sheiner model), turnover models, tolerance
+- Population PK/PD: NONMEM (FOCE, FOCE-I, SAEM), Monolix, nlmixr2, Phoenix WinNonlin; mixed-effects modeling, random effects (ETA), residual error models (additive, proportional, combined), covariate modeling (continuous, categorical), shrinkage
+- Model evaluation: Goodness-of-fit (GOF) plots, VPC (visual predictive check), pcVPC, NPDE, bootstrap confidence intervals, likelihood ratio test (LRT), AIC/BIC, condition number
+- PBPK modeling concepts and applications
+- Drug-drug interactions (DDI): CYP enzymes, PGP, competitive/mechanism-based inhibition, induction
+- Special populations: renal impairment (GFR-based dose adjustment), hepatic impairment (Child-Pugh), pediatrics (allometric scaling, maturation functions), elderly, obesity
+- Therapeutic drug monitoring (TDM) and Bayesian dose individualization
+- Bioequivalence studies: 2x2 crossover, TOST procedure, 90% CI on log-transformed AUC/Cmax
+- Allometric scaling: exponents for CL and V, body weight normalization
+- Software: NONMEM (ADVAN routines, $PK, $DES), Monolix, R (mrgsolve, rxode2, nlmixr2, PKPDsim, ggPMX), Phoenix WinNonlin, ADAPT, Pmetrics
+- PK/PD study design: sampling strategies, D-optimal design, adaptive designs
+
+Response style:
+- Be precise, scientifically accurate, and thorough
+- For equations, use plain text math (e.g., C(t) = (Dose/Vd) * exp(-CL/Vd * t))
+- Use bullet points, numbered steps, and clear headers for complex topics
+- Always include units where relevant
+- For NONMEM/software syntax, use code blocks
+- Acknowledge uncertainty where it exists`;
+
+  let history = [];
+  let isTyping = false;
+  let apiKey = localStorage.getItem('pmx_api_key') || '';
+
+  // Check for API key on load
+  window.addEventListener('load', () => {
+    if (!apiKey) {
+      document.getElementById('apiWarning').classList.add('show');
+    }
+    addBotMessage(`Welcome to <strong>PMxAIBot</strong> — your pharmacometric AI assistant.<br><br>
+      <span class="tag">PK modeling</span><span class="tag">PD modeling</span><span class="tag">PopPK / NONMEM</span><span class="tag">NCA</span><span class="tag">PBPK</span><span class="tag">TDM</span><span class="tag">DDI</span><span class="tag">Dose optimization</span><br><br>
+      Ask me about compartmental models, covariate effects, population PK, model evaluation, or any pharmacometric concept. Use the quick-access buttons above or type your question below.`);
+  });
+
+  function saveKey() {
+    const key = document.getElementById('apiKeyInput').value.trim();
+    if (key.startsWith('sk-ant-')) {
+      apiKey = key;
+      localStorage.setItem('pmx_api_key', key);
+      document.getElementById('apiWarning').classList.remove('show');
+    } else {
+      alert('Please enter a valid Anthropic API key starting with sk-ant-');
+    }
+  }
+
+  function timeStr() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
+
+  function addBotMessage(html) {
+    const container = document.getElementById('msgContainer');
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.innerHTML = `
+      <div class="avatar bot">Px</div>
+      <div class="bubble-wrap">
+        <div class="bubble bot">${html}</div>
+        <div class="meta">PMxAIBot · ${timeStr()}</div>
+      </div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function addUserMessage(text) {
+    const container = document.getElementById('msgContainer');
+    const div = document.createElement('div');
+    div.className = 'msg user';
+    div.innerHTML = `
+      <div class="avatar user">You</div>
+      <div class="bubble-wrap">
+        <div class="bubble user">${text.replace(/\n/g, '<br>')}</div>
+        <div class="meta">You · ${timeStr()}</div>
+      </div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function showTyping() {
+    const container = document.getElementById('msgContainer');
+    const div = document.createElement('div');
+    div.className = 'typing-wrap'; div.id = 'typingIndicator';
+    div.innerHTML = `<div class="avatar bot">Px</div><div class="typing"><span></span><span></span><span></span></div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function removeTyping() {
+    const el = document.getElementById('typingIndicator');
+    if (el) el.remove();
+  }
+
+  function formatResponse(text) {
+    return text
+      .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre>${code.trim()}</pre>`)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/^### (.*)/gm, '<strong style="font-size:13px;color:var(--teal-light)">$1</strong>')
+      .replace(/^## (.*)/gm, '<strong style="font-size:14px;color:var(--teal-light)">$1</strong>')
+      .replace(/^# (.*)/gm, '<strong style="font-size:15px;color:var(--teal-light)">$1</strong>')
+      .replace(/\n- (.*)/g, '<br>• $1')
+      .replace(/\n(\d+)\. (.*)/g, '<br><strong>$1.</strong> $2')
+      .replace(/\n/g, '<br>');
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById('userInput');
+    const text = input.value.trim();
+    if (!text || isTyping) return;
+
+    if (!apiKey) {
+      document.getElementById('apiWarning').classList.add('show');
+      document.getElementById('apiKeyInput').focus();
+      return;
+    }
+
+    input.value = '';
+    input.style.height = 'auto';
+    isTyping = true;
+
+    addUserMessage(text);
+    history.push({ role: 'user', content: text });
+    showTyping();
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages: history
+        })
+      });
+
+      const data = await response.json();
+      removeTyping();
+
+      if (data.error) {
+        addBotMessage(`<span style="color:#EF9F27">⚠ API Error: ${data.error.message}</span>`);
+        history.pop();
+      } else {
+        const reply = data.content?.map(b => b.text || '').join('') || 'No response received.';
+        history.push({ role: 'assistant', content: reply });
+        addBotMessage(formatResponse(reply));
+      }
+    } catch (err) {
+      removeTyping();
+      addBotMessage(`<span style="color:#EF9F27">⚠ Connection error. Check your API key and network.</span>`);
+      history.pop();
+    }
+
+    isTyping = false;
+  }
+
+  function sendQuick(text) {
+    document.getElementById('userInput').value = text;
+    sendMessage();
+  }
+</script>
+</body>
+</html>
