@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -294,6 +293,37 @@
     .send-btn:active { transform: scale(0.95); }
     .send-btn svg { width: 17px; height: 17px; fill: white; }
 
+    .upload-btn {
+      width: 42px; height: 42px; border-radius: 10px;
+      border: 1px dashed var(--border2);
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0; font-size: 18px;
+      transition: all 0.15s;
+    }
+    .upload-btn:hover { border-color: var(--teal); background: rgba(29,158,117,0.1); }
+
+    .csv-preview-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px; margin-bottom: 8px;
+      background: rgba(29,158,117,0.08);
+      border: 1px solid var(--border2);
+      border-radius: 8px; font-family: var(--mono); font-size: 11px;
+      color: var(--teal-light);
+    }
+    .csv-info { color: var(--text3); flex: 1; }
+    .csv-clear {
+      background: none; border: none; color: var(--text3);
+      cursor: pointer; font-size: 11px; padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .csv-clear:hover { color: #E24B4A; background: rgba(226,75,74,0.1); }
+
+    .input-hint {
+      font-family: var(--mono); font-size: 10px;
+      color: var(--text3); margin-top: 6px; padding: 0 2px;
+    }
+
     footer {
       position: relative; z-index: 10;
       padding: 8px 24px;
@@ -358,14 +388,24 @@
 
   <div class="messages" id="msgContainer" role="log" aria-live="polite" aria-label="Chat messages"></div>
 
+
   <div class="input-area">
+    <div id="csvPreviewBar" class="csv-preview-bar" style="display:none;">
+      <span id="csvFileName">📊 No file</span>
+      <span id="csvInfo" class="csv-info"></span>
+      <button onclick="clearCSV()" class="csv-clear">✕ Remove</button>
+    </div>
     <div class="input-row">
-      <textarea id="userInput" placeholder="Ask about PK/PD, compartmental models, NONMEM, covariate analysis, dose optimization…" rows="1"
-        onkeydown="handleKey(event)" oninput="autoResize(this)" aria-label="Message input"></textarea>
+      <label class="upload-btn" title="Upload patient PK CSV data">
+        📊
+        <input type="file" id="csvFileInput" accept=".csv" onchange="handleCSV(event)" style="display:none;" />
+      </label>
+      <textarea id="userInput" placeholder="Ask about PK/PD, or upload a CSV with patient data for analysis…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)" aria-label="Message input"></textarea>
       <button class="send-btn" onclick="sendMessage()" aria-label="Send message">
         <svg viewBox="0 0 16 16"><path d="M14.5 8L2 2l2.5 6L2 14l12.5-6z"/></svg>
       </button>
     </div>
+    <div class="input-hint">💡 Upload CSV with columns: ID, TIME, CONC, DOSE — PMxAIBot will analyze your PK data</div>
   </div>
 </main>
 
@@ -567,6 +607,184 @@ Response style:
     }
 
     isTyping = false;
+  }
+
+  let csvData = null;
+
+  // Common PK column unit suggestions
+  const UNIT_SUGGESTIONS = {
+    'TIME': ['h', 'min', 'day', 's'],
+    'CONC': ['ng/mL', 'µg/mL', 'mg/L', 'µg/L', 'nmol/L', 'µmol/L'],
+    'DV': ['ng/mL', 'µg/mL', 'mg/L', 'µg/L', 'nmol/L', 'µmol/L'],
+    'AMT': ['mg', 'µg', 'g', 'nmol', 'µmol'],
+    'DOSE': ['mg', 'µg', 'g', 'mg/kg'],
+    'WT': ['kg', 'lb'],
+    'AGE': ['year', 'month', 'day'],
+    'HT': ['cm', 'm', 'inch'],
+    'CL': ['L/h', 'mL/min', 'L/h/kg'],
+    'V': ['L', 'mL', 'L/kg'],
+    'AUC': ['ng·h/mL', 'µg·h/mL', 'mg·h/L'],
+    'CMAX': ['ng/mL', 'µg/mL', 'mg/L'],
+    'RATE': ['mg/h', 'µg/min', 'mg/min'],
+    'ADDL': [''],
+    'II': ['h', 'min'],
+    'SS': [''],
+    'MDV': [''],
+    'EVID': [''],
+    'CMT': [''],
+    'ID': [''],
+    'NUM': [''],
+  };
+
+  function getUnitSuggestions(col) {
+    const upper = col.toUpperCase();
+    for (const key of Object.keys(UNIT_SUGGESTIONS)) {
+      if (upper === key || upper.includes(key)) return UNIT_SUGGESTIONS[key];
+    }
+    return ['', 'unit'];
+  }
+
+  function handleCSV(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      const lines = text.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      const rows = lines.slice(1).map(l => l.split(',').map(v => v.trim()));
+      csvData = { headers, rows, raw: text, filename: file.name, units: {} };
+
+      document.getElementById('csvPreviewBar').style.display = 'flex';
+      document.getElementById('csvFileName').textContent = '📊 ' + file.name;
+      document.getElementById('csvInfo').textContent = `${rows.length} rows · ${headers.length} columns`;
+
+      // Show units dialog
+      showUnitsDialog(headers, rows, file.name, lines);
+    };
+    reader.readAsText(file);
+  }
+
+  function showUnitsDialog(headers, rows, filename, lines) {
+    // Remove existing dialog if any
+    const existing = document.getElementById('unitsDialog');
+    if (existing) existing.remove();
+
+    const dialog = document.createElement('div');
+    dialog.id = 'unitsDialog';
+    dialog.style.cssText = `
+      position:fixed; inset:0; z-index:1000;
+      background:rgba(0,0,0,0.7); display:flex;
+      align-items:center; justify-content:center; padding:16px;`;
+
+    const inner = document.createElement('div');
+    inner.style.cssText = `
+      background:#111815; border:1px solid rgba(29,158,117,0.4);
+      border-radius:14px; padding:24px; width:100%; max-width:540px;
+      max-height:80vh; overflow-y:auto; font-family:'IBM Plex Mono',monospace;`;
+
+    // Preview table (first 3 data rows)
+    const previewRows = rows.slice(0, 3);
+    let tableHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:16px;color:#8fb5a6;">`;
+    tableHTML += `<tr>${headers.map(h => `<th style="text-align:left;padding:4px 6px;border-bottom:1px solid rgba(29,158,117,0.2);color:#5DCAA5;">${h}</th>`).join('')}</tr>`;
+    previewRows.forEach(row => {
+      tableHTML += `<tr>${row.map(v => `<td style="padding:3px 6px;border-bottom:1px solid rgba(29,158,117,0.08);">${v}</td>`).join('')}</tr>`;
+    });
+    tableHTML += `</table>`;
+
+    // Unit inputs per column
+    let unitsHTML = `<div style="font-size:11px;color:#5DCAA5;margin-bottom:10px;">Assign units to each column:</div>`;
+    unitsHTML += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">`;
+    headers.forEach(col => {
+      const suggestions = getUnitSuggestions(col);
+      const isNoUnit = suggestions.length === 1 && suggestions[0] === '';
+      if (isNoUnit) {
+        unitsHTML += `
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:11px;color:#4d7a6a;min-width:70px;">${col}</span>
+            <span style="font-size:10px;color:#4d7a6a;font-style:italic;">no unit</span>
+            <input type="hidden" id="unit_${col}" value="" />
+          </div>`;
+      } else {
+        unitsHTML += `
+          <div style="display:flex;align-items:center;gap:6px;">
+            <label style="font-size:11px;color:#8fb5a6;min-width:70px;">${col}</label>
+            <select id="unit_${col}" style="flex:1;background:#1a2420;border:1px solid rgba(29,158,117,0.3);border-radius:6px;padding:4px 6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e8f2ee;outline:none;">
+              ${suggestions.map(u => `<option value="${u}">${u || '— none —'}</option>`).join('')}
+              <option value="custom">custom…</option>
+            </select>
+          </div>`;
+      }
+    });
+    unitsHTML += `</div>`;
+
+    inner.innerHTML = `
+      <div style="font-size:14px;font-weight:600;color:#5DCAA5;margin-bottom:4px;">📊 ${filename}</div>
+      <div style="font-size:10px;color:#4d7a6a;margin-bottom:14px;">${rows.length} rows · ${headers.length} columns — preview below</div>
+      ${tableHTML}
+      ${unitsHTML}
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="skipUnits()" style="background:transparent;border:1px solid rgba(29,158,117,0.3);border-radius:8px;padding:8px 16px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#4d7a6a;cursor:pointer;">Skip</button>
+        <button onclick="confirmUnits()" style="background:linear-gradient(135deg,#0F6E56,#1D9E75);border:none;border-radius:8px;padding:8px 18px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#fff;cursor:pointer;">✓ Analyze with these units</button>
+      </div>`;
+
+    dialog.appendChild(inner);
+    document.body.appendChild(dialog);
+    dialog.addEventListener('click', e => { if (e.target === dialog) skipUnits(); });
+
+    // Store for confirm
+    dialog._headers = headers;
+    dialog._rows = rows;
+    dialog._filename = filename;
+    dialog._lines = lines;
+  }
+
+  function confirmUnits() {
+    const dialog = document.getElementById('unitsDialog');
+    const headers = dialog._headers;
+    const rows = dialog._rows;
+    const filename = dialog._filename;
+    const lines = dialog._lines;
+
+    const units = {};
+    headers.forEach(col => {
+      const el = document.getElementById('unit_' + col);
+      if (el) units[col] = el.value === 'custom' ? '' : el.value;
+    });
+    csvData.units = units;
+    dialog.remove();
+    buildAnalysisPrompt(headers, rows, filename, lines, units);
+  }
+
+  function skipUnits() {
+    const dialog = document.getElementById('unitsDialog');
+    const { _headers, _rows, _filename, _lines } = dialog;
+    dialog.remove();
+    buildAnalysisPrompt(_headers, _rows, _filename, _lines, {});
+  }
+
+  function buildAnalysisPrompt(headers, rows, filename, lines, units) {
+    const unitStr = Object.entries(units)
+      .filter(([,v]) => v)
+      .map(([k,v]) => `${k} (${v})`).join(', ');
+
+    const preview = lines.slice(0, Math.min(8, lines.length)).join('\n');
+    const unitLine = unitStr ? `\nColumn units: ${unitStr}` : '';
+
+    const prompt = `I have uploaded a patient PK dataset: "${filename}"${unitLine}\n\nData preview (${rows.length} total rows):\n\`\`\`\n${preview}${lines.length > 8 ? '\n... (' + (lines.length-1) + ' total rows)' : ''}\n\`\`\`\n\nPlease:\n1. Describe the dataset structure and identify all columns\n2. Perform NCA analysis: calculate AUC (linear-log trapezoidal), Cmax, Tmax, t½, CL, Vd, MRT — with correct units\n3. Identify any data issues (missing values, BLQ, outliers)\n4. Provide PK interpretation and any recommendations`;
+
+    document.getElementById('userInput').value = prompt;
+    autoResize(document.getElementById('userInput'));
+  }
+
+  function clearCSV() {
+    csvData = null;
+    document.getElementById('csvPreviewBar').style.display = 'none';
+    document.getElementById('csvFileInput').value = '';
+    document.getElementById('userInput').value = '';
+    document.getElementById('userInput').style.height = 'auto';
+    const dialog = document.getElementById('unitsDialog');
+    if (dialog) dialog.remove();
   }
 
   function sendQuick(text) {
